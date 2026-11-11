@@ -1,0 +1,44 @@
+{
+  "registered_before_evaluation_et": "2026-11-09T17:35-05:00",
+  "note": "Written before any adaptive-policy result was computed. All 2012-2026 data were already inspected by earlier studies, so NO period is untouched/forward validation; evaluation is a retrospective rolling (expanding-window, training-only) simulation.",
+  "question": "Does selecting a payoff family conditionally on observable market state (known at close t-1, traded at open t) improve net $10k results vs each fixed arm, an annual unconditional selector, a fixed mix and a risk-budget-matched SPY/cash benchmark on the same dates?",
+  "decision_grid": "biweekly: first session of even ISO-like week ordinal (phase 0, central); phase 1 (odd weeks) = decision-offset sensitivity",
+  "holding": "options open at open t, close at OPEN of session before synthetic expiry (last session of following week) -> no expiry/pin settlement, no day trades; shares held until next decision open (trade only the difference)",
+  "underlyings": {"options": "SPY only (most liquid, real VIX9D index IV available)", "equity_arm": "SPY 50% + QQQ 50% (adjusted, total return)", "defensive_arm": "TLT <= 50% + cash"},
+  "arms": {
+    "cash": "2% assumed yield",
+    "equity": "SPY/QQQ equal weight, gross exposure = min(1, B / (2.33 * sigma_2w)), sigma_2w = mean trailing base vol(SPY,QQQ) at t-1 * sqrt(10/252); each ticker <= 50%",
+    "defensive": "TLT exposure = min(0.5, B / (2.33 * sigma_2w_TLT)), rest cash",
+    "bull_call_debit": "SPY buy ATM call / sell +0.5EM call, whole contracts, n = floor(B*E/max_loss)",
+    "bear_put_debit": "SPY buy ATM put / sell -0.5EM put, same sizing",
+    "iron_condor": "SPY short +-0.75EM / long +-1.25EM, same sizing, collateral = max loss"
+  },
+  "risk_budget_B": {"central": 0.10, "sensitivity": 0.05, "meaning": "options: max loss per period <= B*equity; shares: ex-ante 2-week 99% normal VaR <= B*equity. Different risk measures, approximately comparable worst-case-per-period; disclosed."},
+  "infeasible_rule": "if whole-contract n < 1 or collateral insufficient -> that sleeve sits in cash (no leverage granted)",
+  "features_at_close_t_minus_1": ["tr63 = SPY 63d return", "sma200_gap", "rv20", "volchg = log(rv20/rv60)", "dd252 = drawdown from 252d high", "vix (CBOE VIX close)", "vrp = VIX/rv20", "term = VIX9D/VIX"],
+  "policy_A_table": {
+    "thresholds": "vix_hi = VIX >= 70th percentile of ALL VIX closes dated before t (1990+); rich = vrp >= median of past vrp (dates before t)",
+    "rules": [
+      "uptrend (sma200_gap>0 & tr63>0) & !vix_hi -> equity",
+      "uptrend & vix_hi -> bull_call_debit",
+      "downtrend (sma200_gap<0 & tr63<0) & term>1 (backwardation) -> bear_put_debit",
+      "downtrend otherwise -> defensive",
+      "mixed & rich & !vix_hi -> iron_condor",
+      "mixed otherwise -> cash"
+    ],
+    "hysteresis": "switch only when the same new recommendation appears at 2 consecutive decisions; start in cash"
+  },
+  "policy_B_contextual_ridge": {
+    "model": "per-arm ridge regression of period label on standardized features (mean/sd from training rows only), alpha=20, intercept unpenalized",
+    "labels": "per-period net return at fractional sizing (budget B, cost_mult of scenario, full round-trip cost), cash yield on idle share",
+    "training_rows": "period k usable at decision j only if k <= j-2 (label realized by t_{k+1} <= t_{j-1}: purge + 1-period embargo >= max holding)",
+    "min_train": 78,
+    "decision": "cand = argmax pred; if pred[cand]-pred[cash] < 0.0025 -> cash; switch from incumbent only if pred[cand]-pred[inc] > 0.005 or pred[inc] < pred[cash]"
+  },
+  "baselines_same_dates": ["each fixed arm", "annual selector (each January: best mean past label, same purge)", "fixed mix (B split equally over 5 non-cash arms)", "SPY/cash with same ex-ante VaR budget B (exposure cap 1.0, labeled exception to 50% cap), with costs", "unlevered 100% SPY buy&hold (benchmark exception to 50% cap)", "supplementary: ex-post same-vol SPY/cash (not tradable)", "oracle best-arm-per-period (unobtainable ceiling, illustrative only)"],
+  "evaluation_window": "starts at first decision with >= 78 usable training labels; all series start $10,000 at that date, no deposits",
+  "central_scenario": {"cost_mult": 2.0, "iv": "VIX9D close (t-1 at entry, t for marks) as SPY ATM IV, skew 0.10", "fill_model": "v3", "itm_frac": 0.10, "phase": 0, "B": 0.10},
+  "one_at_a_time_sensitivities": ["cost_mult 0 (tick rounding only), 1, 3", "IV = trailing RV x 1.0 / 1.1 / 1.25 (skew 0.10)", "itm_frac 0.25", "phase 1", "B 0.05"],
+  "primary_tests": "2 (policy A, policy B) vs best-of(fixed equity arm, SPY/cash budget benchmark) on central; Holm over 2; block bootstrap (6-period blocks) of per-period log-return differences; circular-shift permutation of action sequence (same occupancy/run structure, random timing) as test of conditioning",
+  "success_criterion": "adaptation 'helps' only if CAGR > both equity arm and SPY/cash budget benchmark at central AND Holm-adjusted bootstrap p < 0.05 AND permutation p < 0.05 AND direction holds at cost 3x and in phase 1. Otherwise report no demonstrated edge."
+}

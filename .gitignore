@@ -1,0 +1,30 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments (including .venv.old-prereinstall)
+.venv*/
+venv/
+
+# Environment files
+.env
+.env.*
+
+# Editor / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Data, outputs, caches, logs
+data/
+out/
+cache/
+logs/
+*.parquet
+*.jsonl
+
+# Local install noise
+pip_install.log

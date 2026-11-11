@@ -1,0 +1,196 @@
+{
+ "title": "2026-11-09 abstract-edge-search pre-registration",
+ "frozen_at_et": "2026-11-09T16:50 ET",
+ "frozen_before_any_family_result": true,
+ "account": {
+  "start_cash": 10000,
+  "deposits": 0,
+  "cash_yield": 0.02,
+  "max_per_ticker": 0.5,
+  "day_trades": "0 by construction (all holds overnight); guard counted for options",
+  "spy_benchmark_exception": "SPY buy-hold at 100% is a labelled benchmark exception"
+ },
+ "engine": {
+  "options": "Options/Validate10k.py RunOptions2 with FILL_MODEL=v3 (ITM_FRAC central 0.10, stress 0.25), raw strikes, real ticks, split exclusion, dividends",
+  "shares": "yfinance auto-adjusted (split+div) daily open/close; signals from close t-1, fills at open t; slippage 5 bps x cost_mult per side"
+ },
+ "evaluation": {
+  "cost_mults": [
+   1,
+   2,
+   3
+  ],
+  "central_cost": 2,
+  "bootstrap": "stationary/circular block bootstrap, 21-session blocks, 2000 reps, one-sided p for mean daily excess return > 0",
+  "multiple_testing": "Bonferroni over the 15 primary configurations: alpha = 0.05/15 = 0.00333",
+  "windows": "all 2012-2026 (or 2015-2026 for train-selected F1) = RETROSPECTIVE VALIDATION, not out-of-sample",
+  "start_date_sensitivity": "CAGR from Jan of each start year 2012..2022 to 2026-11-06",
+  "two_questions_kept_separate": {
+   "absolute": "CAGR > 0 and final equity > $10,000 at cost 2",
+   "risk_adjusted_outperformance": "annualised mean daily return minus vol-matched SPY (SPY+cash scaled to the strategy's realised vol), bootstrap p"
+  },
+  "pass_rule": "a primary PASSES only if ALL: (1) absolute CAGR > cash 2% at cost 2 AND cost 3; (2) outperformance vs vol-matched SPY > 0 with bootstrap p < 0.00333; (3) CAGR > 0 in >= 2/3 of start years; (4) every registered neighbor/phase has same-sign outperformance; (5) for options families, survives IVRP 1.0 and ITM_FRAC 0.25 stress with CAGR > 0"
+ },
+ "families": {
+  "F1_inverse": {
+   "mechanism": "if a strategy loses for a structural reason (paying a premium/negative drift), its counterparty side may earn it; but friction is paid on BOTH sides, so inverse only works if gross edge of the original < -2x friction",
+   "universe": "11 Validate10k structures; inverse allowed only if defined-risk and no short stock (straddle/long single-option/covered_call inverses excluded)",
+   "fixed_params": {
+    "exit": "expiry",
+    "sizing": "r02c25",
+    "scenario": "iv1.10_sk10",
+    "tenor": "2w_even"
+   },
+   "selection": "each test year Y in 2015..2026: rank ORIGINAL structures by CAGR over 2012-01-03..(Y-1)-12-31 at cost 2 (train only); trade the inverse in year Y",
+   "primaries": {
+    "F1a": "literal inverse (all leg quantities negated, same entry signal) of the train-worst inverse-eligible structure",
+    "F1b": "equal-weight daily-return blend of the inverses of the train-worst 3 inverse-eligible structures",
+    "F1c": "opposite-signal: same legs as the train-worst directional (bull/bear) structure, entered on the OPPOSITE trend signal",
+    "F1d": "opposite-signal shares: long-only, equal weight (<=50%) tickers in a BEAR trend state (close<SMA50 and 63d return<0), biweekly Mon/even phase"
+   },
+   "diagnostics_not_primaries": [
+    "cost_mult 0 (frictionless) original vs inverse CAGR for every eligible structure",
+    "hindsight full-period worst-loser inverse (labelled HINDSIGHT)",
+    "IVRP 1.0 / 1.25 and ITM_FRAC 0.25 rerun of the selected inverses",
+    "2w_odd phase",
+    "all 10 weekday x parity phases for F1d"
+   ]
+  },
+  "F2_trend_voltarget": {
+   "mechanism": "time-series momentum (slow-moving risk premia / underreaction) and volatility clustering (vol targeting lowers exposure in turbulent regimes)",
+   "universe": [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "XBI",
+    "GDX",
+    "TLT"
+   ],
+   "rule": "monthly at the open of the first session with day-of-month >= offset; asset eligible if Close(t-1-21)/Close(t-1-L) - 1 > 0; weights proportional to 1/vol60; whole book scaled so ex-ante vol (60d covariance at t-1) = target; per-ticker cap 50%, gross <= 100%, rest cash",
+   "primaries": {
+    "F2a": {
+     "L": 126,
+     "target": 0.1
+    },
+    "F2b": {
+     "L": 126,
+     "target": 0.15
+    },
+    "F2c": {
+     "L": 252,
+     "target": 0.1
+    },
+    "F2d": {
+     "L": 252,
+     "target": 0.15
+    }
+   },
+   "offset_primary": 1,
+   "neighborhood": {
+    "offset": [
+     8,
+     15,
+     22
+    ],
+    "L": [
+     189
+    ],
+    "target": [
+     0.08,
+     0.12,
+     0.2
+    ]
+   },
+   "benchmarks": [
+    "SPY buy-hold 100% (labelled exception)",
+    "vol-matched SPY+cash",
+    "60/40 SPY/TLT monthly",
+    "equal-weight 6 ETF monthly (16.7% each)",
+    "cash 2%"
+   ]
+  },
+  "F3_vrp_gated_spy_options": {
+   "mechanism": "variance risk premium: implied vol usually exceeds subsequent realized; sell when the ex-ante premium is large, buy convexity when implied is cheap vs recent realized",
+   "data": "REAL ex-ante implied vol: Cboe VIX9D close (yfinance ^VIX9D, 2011-01-04..) used as SPY ATM IV at entry (close t-1) and at marks (close t); skew 0.10 ASSUMED; spreads/fees ASSUMED (cost 1/2/3); SPX index vol applied to SPY (assumption)",
+   "gate": "ratio = VIX9D(t-1)/100 / RV20(t-1), RV20 = sqrt(252)*stdev of last 20 SPY log returns",
+   "fixed_params": {
+    "symbol": "SPY",
+    "exit": "expiry",
+    "sizing": "r02c25",
+    "tenor": "2w_even",
+    "ivrp": 1.0
+   },
+   "primaries": {
+    "F3a": "iron_condor only when ratio >= 1.25",
+    "F3b": "bull_put_credit only when ratio >= 1.25 (and bull trend)",
+    "F3c": "long_straddle only when ratio <= 0.90",
+    "F3d": "iron_condor ungated (control)",
+    "F3e": "long_straddle ungated (control)",
+    "F3f": "underlying analog: hold SPY 50% when ratio(t-1) >= 1.0 else cash, decided at close t-1, traded at open t"
+   },
+   "neighborhood": {
+    "short_threshold": [
+     1.1,
+     1.4
+    ],
+    "long_threshold": [
+     0.8,
+     1.0
+    ],
+    "tenor": [
+     "2w_odd"
+    ],
+    "sizing": [
+     "r01c10",
+     "r05c25"
+    ],
+    "F3f_threshold": [
+     0.9,
+     1.1
+    ]
+   },
+   "stress": "assignment/pin: count short legs ITM with extrinsic < tick near expiry; ITM_FRAC 0.25; skew 0.05/0.15 noted as untested",
+   "control_for_F3f": "SPY 50% constant"
+  },
+  "F4_turn_of_month": {
+   "mechanism": "month-end/month-start flows (payroll, pension and fund rebalancing) documented since Ariel (1987) / Lakonishok-Smidt (1988)",
+   "rule": "hold SPY/QQQ/IWM at 1/3 each from the OPEN of the last session of month m to the OPEN of the 4th session of month m+1; cash otherwise",
+   "primaries": {
+    "F4a": {
+     "entry_offset": -1,
+     "exit_session": 3
+    }
+   },
+   "neighborhood": [
+    {
+     "entry_offset": -2,
+     "exit_session": 3
+    },
+    {
+     "entry_offset": -1,
+     "exit_session": 2
+    },
+    {
+     "entry_offset": -1,
+     "exit_session": 4
+    },
+    {
+     "entry_offset": 0,
+     "exit_session": 3
+    }
+   ],
+   "control": "same exposure-time fraction of SPY via vol-matched SPY; random-month-window placebo (same window length, 500 draws)"
+  }
+ },
+ "n_primary": 15,
+ "not_testable_declared": [
+  "true option edge on single names (no historical quotes/IV)",
+  "short-dated (<1w) SPY options gating (VIX9D is 9-day; ok for 2w but extrapolated)",
+  "earnings-expectation signals (no as-of consensus)"
+ ],
+ "repairs_registered": {
+  "fill_v3": "half-spread pct on extrinsic + ITM_FRAC x intrinsic; exercise floor for selling long ITM legs; v2 retained as legacy",
+  "earnings_timing": "EDGAR 8-K Item 2.02 acceptance timestamps; ambiguous/6-K-only/no-match excluded; price reaction never consulted"
+ },
+ "prospective_paper_test_rule": "named in findings; NOT started or scheduled"
+}
